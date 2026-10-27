@@ -57,6 +57,16 @@ export default function Home() {
   const narrateSeqRef = useRef(0);
   const bottomRef = useRef(null);
 
+  // Seconds since the ghost started typing, so a slow first word reads as
+  // progress rather than a frozen terminal.
+  const [waitSecs, setWaitSecs] = useState(0);
+  useEffect(() => {
+    if (!loading) return;
+    setWaitSecs(0);
+    const t = setInterval(() => setWaitSecs((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [loading]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines, loading, streamingText]);
@@ -302,7 +312,7 @@ export default function Home() {
               </div>
             ))}
             {loading && streamingText && <div style={{ margin: "10px 0" }}>{streamingText}</div>}
-            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...</div>}
+            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...{waitSecs >= 3 ? ` ${waitSecs}s` : ""}</div>}
             {lastGhost && !loading && (
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
                 <button

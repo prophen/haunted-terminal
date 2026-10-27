@@ -49,11 +49,17 @@ export async function POST(req) {
         } catch {}
       };
       try {
+        const t0 = Date.now();
+        let firstMs = null;
         let full = "";
         for await (const chunk of gemmaStream(SYSTEM, user)) {
+          firstMs ??= Date.now() - t0;
           full += chunk;
           send({ chunk });
         }
+        // Timing lands in the server log (Vercel's function logs), which is
+        // where to look if a turn feels slow again.
+        console.log(`story: first text after ${firstMs}ms, done after ${Date.now() - t0}ms, ${full.length} chars`);
         // Tolerant parse: accept marker spacing/casing variants, and never
         // fail the whole turn over missing choices. A passage with fallback
         // choices beats a demo fallback every time.
