@@ -12,7 +12,9 @@ passage, and ElevenLabs narrates it.
 - Story: Gemma through Google AI Studio by default
   (`GEMMA_CLOUD_MODEL=gemma-4-26b-a4b-it`, thinking budget 0), with an
   Ollama local fallback. The Gemma and ElevenLabs calls mirror Talk to the
-  Book's proven routes.
+  Book's proven routes. Story turns stream: passages appear as Gemma writes
+  them instead of after one long wait. Passages are 80 to 130 words to keep
+  turns snappy.
 - Narration: ElevenLabs TTS, one passage at a time.
 
 ## Run

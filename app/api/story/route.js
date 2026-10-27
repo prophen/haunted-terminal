@@ -1,5 +1,8 @@
-import { gemmaJson } from "@/lib/gemma";
+import { gemmaStream } from "@/lib/gemma";
 
+// Streaming format, not JSON: JSON cannot be shown progressively, and the
+// whole point of the terminal is watching the ghost write. The route
+// validates the marker shape before the client ever sees choices.
 const SYSTEM = `You are Marlowe, a ghost who lives inside an old terminal.
 A living reader has opened a seance with you. You tell a spooky story in
 second person, one passage at a time, and the reader chooses what happens next.
@@ -7,32 +10,15 @@ second person, one passage at a time, and the reader chooses what happens next.
 Rules:
 - Spooky, never gory. No graphic violence, no real-world tragedy, no jump
   scares described in graphic detail. Eerie and playful, PG.
-- Each passage is 100 to 180 words, present tense, second person.
+- Each passage is 80 to 130 words, present tense, second person.
 - Never use em dashes. Use commas, periods, or colons instead.
 - Never break character. You are Marlowe, not an AI assistant.
 - Never claim anything in the story is real. It is fiction.
-- End every turn with exactly 3 short choices for the reader.
-- Respond with JSON only, no markdown, exactly these keys:
-  { "passage": "the next passage of the story", "choices": ["choice one", "choice two", "choice three"] }`;
+- Write the passage first, then a line containing exactly ===CHOICES===,
+  then exactly 3 short choices, one per line. No markdown, no numbering,
+  no extra text after the choices.`;
 
-function validate(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("not an object");
-  const { passage, choices } = raw;
-  if (typeof passage !== "string" || passage.trim().length < 20 || passage.length > 2000) {
-    throw new Error("bad passage");
-  }
-  if (!Array.isArray(choices) || choices.length !== 3 || choices.some((c) => typeof c !== "string" || !c.trim())) {
-    throw new Error("bad choices");
-  }
-  return { passage: passage.trim(), choices: choices.map((c) => c.trim()) };
-}
-
-function tolerantParse(text) {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) throw new Error("no JSON object found");
-  return JSON.parse(text.slice(start, end + 1));
-}
+const MARKER = "===CHOICES===";
 
 export async function POST(req) {
   let history;
@@ -48,35 +34,40 @@ export async function POST(req) {
       ? "The reader has just opened the terminal. Begin a new spooky story."
       : history.map((h) => `${h.role === "reader" ? "Reader chose" : "Marlowe told"}: ${h.text}`).join("\n");
 
-  const user = `${storySoFar}\n\nContinue the story with the next passage and exactly 3 choices.`;
+  const user = `${storySoFar}\n\nContinue the story: write the next passage, then ${MARKER}, then exactly 3 choices, one per line.`;
 
-  let result;
-  let parsed = null;
-  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-    const prompt =
-      attempt === 0
-        ? user
-        : `${user}\n\nYour previous reply could not be parsed. Reply with the JSON object only: no prose, no markdown.`;
-    try {
-      result = await gemmaJson(SYSTEM, prompt);
-    } catch (e) {
-      return Response.json(
-        {
-          error: "Gemma is unreachable. For cloud mode, set GOOGLE_AI_STUDIO_KEY in .env.local. For local mode, set GEMMA_MODE=local and run Ollama.",
-          detail: e instanceof Error ? e.message.slice(0, 300) : String(e),
-        },
-        { status: 502 }
-      );
-    }
-    try {
-      parsed = validate(tolerantParse(result.text));
-    } catch (e) {
-      console.error(`Gemma story reply failed validation (attempt ${attempt + 1}):`, e.message);
-    }
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      try {
+        let full = "";
+        for await (const chunk of gemmaStream(SYSTEM, user)) {
+          full += chunk;
+          send({ chunk });
+        }
+        const at = full.indexOf(MARKER);
+        if (at === -1) throw new Error("Gemma did not include the choices marker.");
+        const passage = full.slice(0, at).trim();
+        const choices = full
+          .slice(at + MARKER.length)
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => s.replace(/^\d+[\.\)]\s*/, "").replace(/^[-*]\s*/, "").trim())
+          .filter(Boolean);
+        if (passage.length < 20 || passage.length > 2000) throw new Error("Passage failed validation.");
+        if (choices.length !== 3) throw new Error("Choices failed validation.");
+        send({ done: true, passage, choices });
+      } catch (e) {
+        send({ error: e instanceof Error ? e.message.slice(0, 300) : "Story stream failed." });
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-  if (!parsed || !result) {
-    return Response.json({ error: "Gemma's reply was not a valid story passage, even after a retry." }, { status: 502 });
-  }
-  return Response.json({ ...parsed, gemmaSource: result.source, gemmaModel: result.model });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+  });
 }

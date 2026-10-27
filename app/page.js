@@ -25,6 +25,7 @@ export default function Home() {
   const [demoMode, setDemoMode] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
   const [notice, setNotice] = useState("");
+  const [streamingText, setStreamingText] = useState("");
   const [custom, setCustom] = useState("");
   const [narrating, setNarrating] = useState(false);
   const audioRef = useRef(null);
@@ -37,24 +38,67 @@ export default function Home() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines, loading]);
+  }, [lines, loading, streamingText]);
+
+  // Streams one story turn: passages appear as Gemma writes them, and the
+  // validated passage plus choices arrive in the final event.
+  const fetchStory = async (nextHistory, onChunk) => {
+    const res = await fetch("/api/story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history: nextHistory }),
+    });
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Story request failed.");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let raw = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) !== -1) {
+        const event = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        for (const line of event.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+          let obj;
+          try {
+            obj = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+          if (obj.chunk) {
+            raw += obj.chunk;
+            onChunk?.(raw.split("===CHOICES===")[0]);
+          }
+          if (obj.done) return { passage: obj.passage, choices: obj.choices };
+          if (obj.error) throw new Error(obj.error);
+        }
+      }
+    }
+    throw new Error("The story stream ended unexpectedly.");
+  };
 
   const startLive = useCallback(async () => {
     setLoading(true);
     setNotice("");
+    setStreamingText("");
     try {
-      const res = await fetch("/api/story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ history: [] }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Story request failed.");
+      const data = await fetchStory([], setStreamingText);
+      setStreamingText("");
       setLines([{ kind: "ghost", text: data.passage }]);
       setChoices(data.choices);
       setHistory([{ role: "ghost", text: data.passage }]);
       setDemoMode(false);
     } catch (e) {
+      setStreamingText("");
       setDemoMode(true);
       setDemoStep(0);
       setLines([{ kind: "ghost", text: DEMO_OPENING.passage }]);
@@ -97,18 +141,15 @@ export default function Home() {
     }
     const nextHistory = [...history, { role: "reader", text: choice }];
     setLoading(true);
+    setStreamingText("");
     try {
-      const res = await fetch("/api/story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ history: nextHistory }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Story request failed.");
+      const data = await fetchStory(nextHistory, setStreamingText);
+      setStreamingText("");
       setLines((prev) => [...prev, { kind: "ghost", text: data.passage }]);
       setChoices(data.choices);
       setHistory([...nextHistory, { role: "ghost", text: data.passage }]);
     } catch (e) {
+      setStreamingText("");
       setLines((prev) => [...prev, { kind: "error", text: `The ghost went quiet: ${e.message}` }]);
       setChoices([]);
     } finally {
@@ -165,6 +206,7 @@ export default function Home() {
     audioRef.current = null;
     narrateSeqRef.current += 1;
     setNarrating(false);
+    setStreamingText("");
     setLines([]);
     setChoices([]);
     setHistory([]);
@@ -220,7 +262,8 @@ export default function Home() {
                 {line.text}
               </div>
             ))}
-            {loading && <div style={{ margin: "10px 0" }}>The ghost is typing...</div>}
+            {loading && streamingText && <div style={{ margin: "10px 0" }}>{streamingText}</div>}
+            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...</div>}
             {lastGhost && !loading && (
               <button
                 onClick={() => narrate(lastGhost.text)}
