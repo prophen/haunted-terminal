@@ -47,4 +47,4 @@ gitignored.
 ## Status
 
 - Scaffolded 2026-10-26 evening after she picked the direction; `npm run build` passes.
-- Not deployed, no domain claimed, no repo created yet.
+- Pushed to https://github.com/prophen/haunted-terminal on 2026-10-26. Not deployed, no domain claimed.
