@@ -255,7 +255,7 @@ export default function Home() {
           <div style={{ position: "relative", color: "#33ff66", fontSize: 14, lineHeight: 1.65, textShadow: "0 0 6px rgba(51,255,102,.35)" }}>
             <div style={{ color: "#1f8a3a" }}>$ seance --begin</div>
             <div style={{ color: "#1f8a3a", margin: "10px 0" }}>
-              The terminal flickers. Something has been waiting in the machine since 1987...
+              The terminal flickers. Something has been waiting in the machine...
             </div>
             {lines.map((line, i) => (
               <div key={i} style={{ margin: "10px 0", color: line.kind === "error" ? "#ff7b72" : line.kind === "reader" ? "#7ddb8a" : "#33ff66" }}>

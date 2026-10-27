@@ -65,7 +65,14 @@ export async function POST(req) {
             .filter(Boolean)
             .slice(0, 3);
         }
-        if (passage.length < 20 || passage.length > 2000) throw new Error("Passage failed validation.");
+        // Long passages happen when Gemma ignores the word count or skips
+        // the marker: trim to a readable length instead of failing the turn.
+        if (passage.length < 20) throw new Error(`Passage failed validation (length ${passage.length}).`);
+        if (passage.length > 2000) {
+          const cut = passage.slice(0, 2000);
+          const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+          passage = (end > 500 ? cut.slice(0, end + 1) : cut).trim();
+        }
         if (choices.length < 3) choices = [...choices, ...FALLBACK_CHOICES].slice(0, 3);
         send({ done: true, passage, choices });
       } catch (e) {
