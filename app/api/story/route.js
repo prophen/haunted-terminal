@@ -1,8 +1,9 @@
-import { gemmaStream } from "@/lib/gemma";
+import { gemmaText } from "@/lib/gemma";
 
-// Streaming format, not JSON: JSON cannot be shown progressively, and the
-// whole point of the terminal is watching the ghost write. The route
-// validates the marker shape before the client ever sees choices.
+// SSE envelope, one done event: the story arrives whole from the
+// non-streaming call (the streaming endpoint proved unreliable: empty
+// replies and multi-minute waits), and the route validates the marker
+// shape before the client ever sees choices.
 const SYSTEM = `You are Marlowe, a ghost who lives inside an old terminal.
 A living reader has opened a seance with you. You tell a spooky story in
 second person, one passage at a time, and the reader chooses what happens next.
@@ -42,11 +43,10 @@ export async function POST(req) {
     async start(controller) {
       const send = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       try {
-        let full = "";
-        for await (const chunk of gemmaStream(SYSTEM, user)) {
-          full += chunk;
-          send({ chunk });
-        }
+        // Non-streaming first: the proven Talk to the Book path. The passage
+        // arrives whole after one call instead of word by word, and the
+        // client already handles a done event with no prior chunks.
+        const full = await gemmaText(SYSTEM, user);
         // Tolerant parse: accept marker spacing/casing variants, and never
         // fail the whole turn over missing choices. A passage with fallback
         // choices beats a demo fallback every time.
