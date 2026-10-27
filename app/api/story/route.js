@@ -14,9 +14,10 @@ Rules:
 - Never use em dashes. Use commas, periods, or colons instead.
 - Never break character. You are Marlowe, not an AI assistant.
 - Never claim anything in the story is real. It is fiction.
-- Write the passage first, then a line containing exactly ===CHOICES===,
-  then exactly 3 short choices, one per line. No markdown, no numbering,
-  no extra text after the choices.`;
+- Every response MUST end with a line containing exactly ===CHOICES===
+  (no spaces inside the marker, alone on its line), then exactly 3 short
+  choices, one per line. No markdown, no numbering, no extra text after
+  the choices. The marker and the 3 choices are required, not optional.`;
 
 const MARKER = "===CHOICES===";
 
@@ -46,18 +47,26 @@ export async function POST(req) {
           full += chunk;
           send({ chunk });
         }
-        const at = full.indexOf(MARKER);
-        if (at === -1) throw new Error("Gemma did not include the choices marker.");
-        const passage = full.slice(0, at).trim();
-        const choices = full
-          .slice(at + MARKER.length)
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map((s) => s.replace(/^\d+[\.\)]\s*/, "").replace(/^[-*]\s*/, "").trim())
-          .filter(Boolean);
+        // Tolerant parse: accept marker spacing/casing variants, and never
+        // fail the whole turn over missing choices. A passage with fallback
+        // choices beats a demo fallback every time.
+        const FALLBACK_CHOICES = ["Ask who it is", "Try to log out", "Type HELLO"];
+        const markerMatch = full.match(/===+\s*CHOICES\s*===+/i);
+        let passage = full.trim();
+        let choices = [];
+        if (markerMatch) {
+          passage = full.slice(0, markerMatch.index).trim();
+          choices = full
+            .slice(markerMatch.index + markerMatch[0].length)
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => s.replace(/^\d+[\.\)]\s*/, "").replace(/^[-*]\s*/, "").trim())
+            .filter(Boolean)
+            .slice(0, 3);
+        }
         if (passage.length < 20 || passage.length > 2000) throw new Error("Passage failed validation.");
-        if (choices.length !== 3) throw new Error("Choices failed validation.");
+        if (choices.length < 3) choices = [...choices, ...FALLBACK_CHOICES].slice(0, 3);
         send({ done: true, passage, choices });
       } catch (e) {
         send({ error: e instanceof Error ? e.message.slice(0, 300) : "Story stream failed." });

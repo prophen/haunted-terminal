@@ -103,7 +103,7 @@ export default function Home() {
       setDemoStep(0);
       setLines([{ kind: "ghost", text: DEMO_OPENING.passage }]);
       setChoices(DEMO_OPENING.choices);
-      setNotice(`Demo mode: live stories need GOOGLE_AI_STUDIO_KEY in .env.local. (${e.message})`);
+      setNotice(`Demo mode: ${e.message}`);
     } finally {
       setLoading(false);
     }
