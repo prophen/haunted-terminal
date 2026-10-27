@@ -28,6 +28,8 @@ export default function Home() {
   const [streamingText, setStreamingText] = useState("");
   const [custom, setCustom] = useState("");
   const [narrating, setNarrating] = useState(false);
+  const [rate, setRate] = useState(1);
+  const rateRef = useRef(1);
   const audioRef = useRef(null);
   // Guards against the double-click bug: two rapid Listen taps used to fire
   // two narration fetches and two Audio objects, and pause only knew about
@@ -157,6 +159,14 @@ export default function Home() {
     }
   };
 
+  // Playback speed is a client-side control: it changes how fast the
+  // already-generated audio plays, instantly, with no new API call.
+  const setPlaybackRate = (r) => {
+    rateRef.current = r;
+    setRate(r);
+    if (audioRef.current) audioRef.current.playbackRate = r;
+  };
+
   const narrate = async (text) => {
     // Ignore taps while a narration fetch is already in flight: that was
     // the double-play bug. A second tap can only pause, never start a
@@ -190,6 +200,7 @@ export default function Home() {
       }
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.playbackRate = rateRef.current;
       audioRef.current = audio;
       audio.onended = () => setNarrating(false);
       setNarrating(true);
@@ -265,22 +276,42 @@ export default function Home() {
             {loading && streamingText && <div style={{ margin: "10px 0" }}>{streamingText}</div>}
             {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...</div>}
             {lastGhost && !loading && (
-              <button
-                onClick={() => narrate(lastGhost.text)}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #33ff66",
-                  color: "#33ff66",
-                  font: "inherit",
-                  fontSize: 13,
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  marginTop: 4,
-                }}
-              >
-                {narrating ? "Pause narration" : "Listen"}
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => narrate(lastGhost.text)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #33ff66",
+                    color: "#33ff66",
+                    font: "inherit",
+                    fontSize: 13,
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  {narrating ? "Pause narration" : "Listen"}
+                </button>
+                <span style={{ color: "#1f8a3a", fontSize: 12 }}>speed:</span>
+                {[1, 1.25, 1.5, 2].map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setPlaybackRate(r)}
+                    style={{
+                      background: rate === r ? "rgba(51,255,102,.12)" : "transparent",
+                      border: `1px solid ${rate === r ? "#33ff66" : "#1e3a22"}`,
+                      color: rate === r ? "#33ff66" : "#1f8a3a",
+                      font: "inherit",
+                      fontSize: 12,
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {r}x
+                  </button>
+                ))}
+              </div>
             )}
             {choices.length > 0 && !loading && (
               <div style={{ marginTop: 16 }}>
@@ -359,7 +390,7 @@ export default function Home() {
         </div>
       </div>
       {notice && <p style={{ color: "#ffb86b", fontSize: 13, lineHeight: 1.5 }}>{notice}</p>}
-      {demoMode && <p style={{ color: "#7ddb8a", fontSize: 13 }}>Demo story. Add keys to .env.local for live Gemma passages and ElevenLabs narration.</p>}
+      {demoMode && <p style={{ color: "#7ddb8a", fontSize: 13 }}>Demo story. Your next choice tries the live story again.</p>}
       <style>{`.cursor{display:inline-block;width:9px;height:17px;background:#33ff66;vertical-align:-2px;animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}`}</style>
     </main>
   );

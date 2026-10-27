@@ -67,7 +67,10 @@ export async function POST(req) {
         }
         // Long passages happen when Gemma ignores the word count or skips
         // the marker: trim to a readable length instead of failing the turn.
-        if (passage.length < 20) throw new Error(`Passage failed validation (length ${passage.length}).`);
+        if (passage.length < 20) {
+          const snippet = full.replace(/\s+/g, " ").trim().slice(0, 120);
+          throw new Error(`Passage failed validation (length ${passage.length}; received ${full.length} chars: "${snippet}").`);
+        }
         if (passage.length > 2000) {
           const cut = passage.slice(0, 2000);
           const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
