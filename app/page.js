@@ -28,6 +28,11 @@ export default function Home() {
   const [custom, setCustom] = useState("");
   const [narrating, setNarrating] = useState(false);
   const audioRef = useRef(null);
+  // Guards against the double-click bug: two rapid Listen taps used to fire
+  // two narration fetches and two Audio objects, and pause only knew about
+  // the second one, so both played at once.
+  const narrateBusyRef = useRef(false);
+  const narrateSeqRef = useRef(0);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -66,6 +71,14 @@ export default function Home() {
 
   const choose = async (choice) => {
     if (loading) return;
+    // Moving on stops any narration in progress, so it never bleeds into
+    // the next passage.
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    narrateSeqRef.current += 1;
+    setNarrating(false);
     setLines((prev) => [...prev, { kind: "reader", text: `> ${choice}` }]);
     setChoices([]);
     if (demoMode) {
@@ -104,11 +117,18 @@ export default function Home() {
   };
 
   const narrate = async (text) => {
-    if (narrating) {
-      audioRef.current?.pause();
+    // Ignore taps while a narration fetch is already in flight: that was
+    // the double-play bug. A second tap can only pause, never start a
+    // second stream.
+    if (narrateBusyRef.current) return;
+    if (narrating && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
       setNarrating(false);
       return;
     }
+    const seq = narrateSeqRef.current;
+    narrateBusyRef.current = true;
     try {
       const res = await fetch("/api/narrate", {
         method: "POST",
@@ -120,6 +140,13 @@ export default function Home() {
         throw new Error(data.error ?? "Narration failed.");
       }
       const blob = await res.blob();
+      // If the reader moved on while this fetch was in flight, discard it
+      // instead of starting audio under the new passage.
+      if (seq !== narrateSeqRef.current) return;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
@@ -128,11 +155,15 @@ export default function Home() {
       await audio.play();
     } catch (e) {
       setNotice(`Narration unavailable: ${e.message}`);
+    } finally {
+      narrateBusyRef.current = false;
     }
   };
 
   const restart = () => {
     audioRef.current?.pause();
+    audioRef.current = null;
+    narrateSeqRef.current += 1;
     setNarrating(false);
     setLines([]);
     setChoices([]);
