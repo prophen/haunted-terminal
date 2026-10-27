@@ -1,20 +1,35 @@
-import { gemmaText } from "@/lib/gemma";
+import { gemmaStream } from "@/lib/gemma";
 
-// SSE envelope, one done event: the story arrives whole from the
-// non-streaming call (the streaming endpoint proved unreliable: empty
-// replies and multi-minute waits), and the route validates the marker
-// shape before the client ever sees choices.
-const SYSTEM = `You are Marlowe, a ghost who lives inside an old terminal.
-A living reader has opened a seance with you. You tell a spooky story in
-second person, one passage at a time, and the reader chooses what happens next.
+// Server-sent events: one { chunk } event per piece of text as Gemma writes
+// it, then one { done, passage, choices } event once the route has
+// validated the marker shape. The client shows chunks as they arrive.
+export const dynamic = "force-dynamic";
+
+const SYSTEM = `You write a branching spooky story set at an old computer
+terminal. The reader is "you": they sit at the terminal, and every passage
+describes what they see, hear, and do, in second person, present tense.
+
+Marlowe is a ghost who lives inside the terminal. He was a writer who typed
+stories on this machine until one winter night, when the power cut out
+mid-sentence and left him trapped on the wrong side of the glass. He wants
+someone to help him finish his last story. Marlowe never narrates. He only
+speaks by typing on the screen, and his words always appear in CAPITALS,
+for example: The cursor moves on its own. It types: WHO IS THERE?
+
+Keep the story coherent: each passage follows directly from the previous
+one and from the reader's choice, nothing happens without a cause, and
+details stay consistent (the room, the machine, what Marlowe has said).
 
 Rules:
 - Spooky, never gory. No graphic violence, no real-world tragedy, no jump
   scares described in graphic detail. Eerie and playful, PG.
-- Each passage is 80 to 130 words, present tense, second person.
+- Each passage is 80 to 130 words. Narration is always second person
+  ("you"); first person ("I") appears only inside Marlowe's CAPITALS.
 - Never use em dashes. Use commas, periods, or colons instead.
-- Never break character. You are Marlowe, not an AI assistant.
+- Never break character or mention being an AI.
 - Never claim anything in the story is real. It is fiction.
+- Choices are short actions the reader takes, written as commands
+  (for example: Type HELLO, Unplug the machine, Ask what happened).
 - Every response MUST end with a line containing exactly ===CHOICES===
   (no spaces inside the marker, alone on its line), then exactly 3 short
   choices, one per line. No markdown, no numbering, no extra text after
@@ -33,20 +48,32 @@ export async function POST(req) {
 
   const storySoFar =
     history.length === 0
-      ? "The reader has just opened the terminal. Begin a new spooky story."
-      : history.map((h) => `${h.role === "reader" ? "Reader chose" : "Marlowe told"}: ${h.text}`).join("\n");
+      ? "The reader has just switched on an old terminal they found. Begin the story: something stirs on the screen, and Marlowe types his first words."
+      : history.map((h) => `${h.role === "reader" ? "Reader chose" : "Passage"}: ${h.text}`).join("\n");
 
   const user = `${storySoFar}\n\nContinue the story: write the next passage, then ${MARKER}, then exactly 3 choices, one per line.`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      // Ignore writes after the reader has gone (tab closed, restart).
+      const send = (obj) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch {}
+      };
       try {
-        // Non-streaming first: the proven Talk to the Book path. The passage
-        // arrives whole after one call instead of word by word, and the
-        // client already handles a done event with no prior chunks.
-        const full = await gemmaText(SYSTEM, user);
+        const t0 = Date.now();
+        let firstMs = null;
+        let full = "";
+        for await (const chunk of gemmaStream(SYSTEM, user)) {
+          firstMs ??= Date.now() - t0;
+          full += chunk;
+          send({ chunk });
+        }
+        // Timing lands in the server log (Vercel's function logs), which is
+        // where to look if a turn feels slow again.
+        console.log(`story: first text after ${firstMs}ms, done after ${Date.now() - t0}ms, ${full.length} chars`);
         // Tolerant parse: accept marker spacing/casing variants, and never
         // fail the whole turn over missing choices. A passage with fallback
         // choices beats a demo fallback every time.
@@ -81,12 +108,21 @@ export async function POST(req) {
       } catch (e) {
         send({ error: e instanceof Error ? e.message.slice(0, 300) : "Story stream failed." });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {}
       }
     },
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      // no-transform keeps gzip (next start, proxies) from buffering the
+      // stream; X-Accel-Buffering does the same for nginx-style proxies.
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      Connection: "keep-alive",
+    },
   });
 }

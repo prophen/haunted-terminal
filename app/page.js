@@ -26,6 +26,15 @@ const DEMO_BACKSTORY = {
 const DEMO_GOODBYE =
   "YOU CLOSE THE LAPTOP. THE ROOM GOES QUIET. SOMEWHERE IN THE DARK, A CURSOR BLINKS ONCE, PATIENT AS A HELD BREATH. IT WILL WAIT.";
 
+// What to show while a passage streams in: everything before the choices
+// marker (in any of the spellings the route accepts), minus a marker that
+// has only partly arrived, such as a trailing "===CHO".
+const visiblePassage = (raw) => {
+  const marker = raw.match(/===+\s*CHOICES\s*===+/i);
+  const text = marker ? raw.slice(0, marker.index) : raw;
+  return text.replace(/\s*=+\s*[A-Z]*\s*=*\s*$/i, "").trimEnd();
+};
+
 export default function Home() {
   const [lines, setLines] = useState([]);
   const [choices, setChoices] = useState([]);
@@ -47,6 +56,16 @@ export default function Home() {
   const narrateBusyRef = useRef(false);
   const narrateSeqRef = useRef(0);
   const bottomRef = useRef(null);
+
+  // Seconds since the ghost started typing, so a slow first word reads as
+  // progress rather than a frozen terminal.
+  const [waitSecs, setWaitSecs] = useState(0);
+  useEffect(() => {
+    if (!loading) return;
+    setWaitSecs(0);
+    const t = setInterval(() => setWaitSecs((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [loading]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -88,7 +107,7 @@ export default function Home() {
           }
           if (obj.chunk) {
             raw += obj.chunk;
-            onChunk?.(raw.split("===CHOICES===")[0]);
+            onChunk?.(visiblePassage(raw));
           }
           if (obj.done) return { passage: obj.passage, choices: obj.choices };
           if (obj.error) throw new Error(obj.error);
@@ -293,7 +312,7 @@ export default function Home() {
               </div>
             ))}
             {loading && streamingText && <div style={{ margin: "10px 0" }}>{streamingText}</div>}
-            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...</div>}
+            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...{waitSecs >= 3 ? ` ${waitSecs}s` : ""}</div>}
             {lastGhost && !loading && (
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
                 <button
