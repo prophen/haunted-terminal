@@ -217,31 +217,34 @@ export default function Home() {
     const seq = narrateSeqRef.current;
     narrateBusyRef.current = true;
     setNarrateLoading(true);
+    // Play straight from the streaming URL: the browser starts as soon as
+    // the first audio arrives instead of waiting for the whole file.
+    const url = `/api/narrate?${new URLSearchParams({ text })}`;
     try {
-      const res = await fetch("/api/narrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Narration failed.");
-      }
-      const blob = await res.blob();
-      // If the reader moved on while this fetch was in flight, discard it
-      // instead of starting audio under the new passage.
-      if (seq !== narrateSeqRef.current) return;
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.playbackRate = rateRef.current;
       audioRef.current = audio;
       audio.onended = () => setNarrating(false);
+      try {
+        await audio.play();
+      } catch {
+        // The audio element hides the server's error, so ask for it.
+        const res = await fetch(url);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Narration failed.");
+      }
+      // If the reader moved on while the audio was loading, stop it
+      // instead of playing under the new passage.
+      if (seq !== narrateSeqRef.current) {
+        audio.pause();
+        if (audioRef.current === audio) audioRef.current = null;
+        return;
+      }
       setNarrating(true);
-      await audio.play();
     } catch (e) {
       setNotice(`Narration unavailable: ${e.message}`);
     } finally {
