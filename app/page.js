@@ -16,6 +16,15 @@ const DEMO_SECOND = {
 };
 const DEMO_ENDING =
   "THEN LET US WRITE IT TOGETHER. The screen goes dark for a full three seconds. When it comes back, a single line waits for you: TO BE CONTINUED...";
+// Asked what happened to Marlowe: a backstory, not the finish-the-story
+// ending. Each demo choice must lead somewhere its own.
+const DEMO_BACKSTORY = {
+  passage:
+    "I TYPED HERE EVERY NIGHT FOR YEARS. ONE WINTER NIGHT THE POWER CUT IN THE MIDDLE OF A SENTENCE, AND WHEN THE LIGHTS CAME BACK, I WAS ON THE WRONG SIDE OF THE GLASS. THE MACHINE KEPT MY LAST DRAFT. IT KEPT ME, TOO. I HAVE BEEN WAITING FOR SOMEONE TO OPEN THIS TERMINAL EVER SINCE.",
+  choices: ["Offer to finish the story", "Close the laptop"],
+};
+const DEMO_GOODBYE =
+  "YOU CLOSE THE LAPTOP. THE ROOM GOES QUIET. SOMEWHERE IN THE DARK, A CURSOR BLINKS ONCE, PATIENT AS A HELD BREATH. IT WILL WAIT.";
 
 export default function Home() {
   const [lines, setLines] = useState([]);
@@ -28,6 +37,7 @@ export default function Home() {
   const [streamingText, setStreamingText] = useState("");
   const [custom, setCustom] = useState("");
   const [narrating, setNarrating] = useState(false);
+  const [narrateLoading, setNarrateLoading] = useState(false);
   const [rate, setRate] = useState(1);
   const rateRef = useRef(1);
   const audioRef = useRef(null);
@@ -134,6 +144,13 @@ export default function Home() {
         setLines((prev) => [...prev, { kind: "ghost", text: DEMO_SECOND.passage }]);
         setChoices(DEMO_SECOND.choices);
         setDemoStep(1);
+      } else if (demoStep === 1 && choice === "Ask what happened to you") {
+        setLines((prev) => [...prev, { kind: "ghost", text: DEMO_BACKSTORY.passage }]);
+        setChoices(DEMO_BACKSTORY.choices);
+        setDemoStep(2);
+      } else if (choice === "Close the laptop") {
+        setLines((prev) => [...prev, { kind: "ghost", text: DEMO_GOODBYE }]);
+        setChoices([]);
       } else {
         setLines((prev) => [...prev, { kind: "ghost", text: DEMO_ENDING }]);
         setChoices([]);
@@ -180,6 +197,7 @@ export default function Home() {
     }
     const seq = narrateSeqRef.current;
     narrateBusyRef.current = true;
+    setNarrateLoading(true);
     try {
       const res = await fetch("/api/narrate", {
         method: "POST",
@@ -209,6 +227,7 @@ export default function Home() {
       setNotice(`Narration unavailable: ${e.message}`);
     } finally {
       narrateBusyRef.current = false;
+      setNarrateLoading(false);
     }
   };
 
@@ -290,7 +309,7 @@ export default function Home() {
                     cursor: "pointer",
                   }}
                 >
-                  {narrating ? "Pause narration" : "Listen"}
+                  {narrateLoading ? "Summoning voice..." : narrating ? "Pause narration" : "Listen"}
                 </button>
                 <span style={{ color: "#1f8a3a", fontSize: 12 }}>speed:</span>
                 {[1, 1.25, 1.5, 2].map((r) => (
