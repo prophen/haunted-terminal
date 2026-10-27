@@ -9,9 +9,11 @@ passage, and ElevenLabs narrates it.
 
 - Next.js (App Router), plain JavaScript, no database. Story state lives in
   the page; nothing is stored server side.
-- Story: Gemma through Google AI Studio by default
-  (`GEMMA_CLOUD_MODEL=gemma-4-26b-a4b-it`, thinking budget 0), with an
-  Ollama local fallback. The Gemma and ElevenLabs calls mirror Talk to the
+- Story: Gemma 4 26B (open weights). Fastest path is `GEMMA_MODE=router`,
+  which streams it from OpenRouter (a few seconds to the first word);
+  Google AI Studio (`GEMMA_MODE=cloud`, thinking off via
+  `thinkingLevel: "minimal"`) works but took about 40 seconds to start in
+  testing. `GEMMA_MODE=local` streams from Ollama. The Gemma and ElevenLabs calls mirror Talk to the
   Book's proven routes. Story turns stream: passages appear as Gemma writes
   them instead of after one long wait. Passages are 80 to 130 words to keep
   turns snappy.
