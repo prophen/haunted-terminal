@@ -16,6 +16,10 @@ someone to help him finish his last story. Marlowe never narrates. He only
 speaks by typing on the screen, and his words always appear in CAPITALS,
 for example: The cursor moves on its own. It types: WHO IS THERE?
 
+The whole story is short: about six passages. Open with the mystery, build
+toward the truth about Marlowe, reach a climax, then end. Every passage
+moves the plot forward; no filler.
+
 Keep the story coherent: each passage follows directly from the previous
 one and from the reader's choice, nothing happens without a cause, and
 details stay consistent (the room, the machine, what Marlowe has said).
@@ -23,7 +27,7 @@ details stay consistent (the room, the machine, what Marlowe has said).
 Rules:
 - Spooky, never gory. No graphic violence, no real-world tragedy, no jump
   scares described in graphic detail. Eerie and playful, PG.
-- Each passage is 80 to 130 words. Narration is always second person
+- Each passage is 50 to 80 words: a few vivid sentences, not a chapter. Narration is always second person
   ("you"); first person ("I") appears only inside Marlowe's CAPITALS.
 - Never use em dashes. Use commas, periods, or colons instead.
 - Never break character or mention being an AI.
@@ -36,6 +40,9 @@ Rules:
   the choices. The marker and the 3 choices are required, not optional.`;
 
 const MARKER = "===CHOICES===";
+// Reader choices before the story ends: the passage after the last one is
+// the ending, with no choices, and the page offers a restart.
+const STORY_CHOICES = 5;
 
 export async function POST(req) {
   let history;
@@ -51,7 +58,15 @@ export async function POST(req) {
       ? "The reader has just switched on an old terminal they found. Begin the story: something stirs on the screen, and Marlowe types his first words."
       : history.map((h) => `${h.role === "reader" ? "Reader chose" : "Passage"}: ${h.text}`).join("\n");
 
-  const user = `${storySoFar}\n\nContinue the story: write the next passage, then ${MARKER}, then exactly 3 choices, one per line.`;
+  const choicesMade = history.filter((h) => h.role === "reader").length;
+  const isEnding = choicesMade >= STORY_CHOICES;
+  const pacing =
+    isEnding
+      ? `This is the final passage. End the story with an eerie, satisfying resolution that follows from the reader's choices. Do not write ${MARKER} or any choices.`
+      : choicesMade === STORY_CHOICES - 1
+        ? `This is the climax, one passage before the end. Write it, then ${MARKER}, then exactly 3 choices, one per line, each leading to a different ending.`
+        : `Write the next passage, then ${MARKER}, then exactly 3 choices, one per line.`;
+  const user = `${storySoFar}\n\nContinue the story. ${pacing}`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -103,7 +118,8 @@ export async function POST(req) {
           const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
           passage = (end > 500 ? cut.slice(0, end + 1) : cut).trim();
         }
-        if (choices.length < 3) choices = [...choices, ...FALLBACK_CHOICES].slice(0, 3);
+        if (isEnding) choices = [];
+        else if (choices.length < 3) choices = [...choices, ...FALLBACK_CHOICES].slice(0, 3);
         send({ done: true, passage, choices });
       } catch (e) {
         send({ error: e instanceof Error ? e.message.slice(0, 300) : "Story stream failed." });
