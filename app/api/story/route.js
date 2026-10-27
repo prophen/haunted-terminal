@@ -1,9 +1,10 @@
-import { gemmaText } from "@/lib/gemma";
+import { gemmaStream } from "@/lib/gemma";
 
-// SSE envelope, one done event: the story arrives whole from the
-// non-streaming call (the streaming endpoint proved unreliable: empty
-// replies and multi-minute waits), and the route validates the marker
-// shape before the client ever sees choices.
+// Server-sent events: one { chunk } event per piece of text as Gemma writes
+// it, then one { done, passage, choices } event once the route has
+// validated the marker shape. The client shows chunks as they arrive.
+export const dynamic = "force-dynamic";
+
 const SYSTEM = `You are Marlowe, a ghost who lives inside an old terminal.
 A living reader has opened a seance with you. You tell a spooky story in
 second person, one passage at a time, and the reader chooses what happens next.
@@ -41,12 +42,18 @@ export async function POST(req) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      // Ignore writes after the reader has gone (tab closed, restart).
+      const send = (obj) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch {}
+      };
       try {
-        // Non-streaming first: the proven Talk to the Book path. The passage
-        // arrives whole after one call instead of word by word, and the
-        // client already handles a done event with no prior chunks.
-        const full = await gemmaText(SYSTEM, user);
+        let full = "";
+        for await (const chunk of gemmaStream(SYSTEM, user)) {
+          full += chunk;
+          send({ chunk });
+        }
         // Tolerant parse: accept marker spacing/casing variants, and never
         // fail the whole turn over missing choices. A passage with fallback
         // choices beats a demo fallback every time.
@@ -81,12 +88,21 @@ export async function POST(req) {
       } catch (e) {
         send({ error: e instanceof Error ? e.message.slice(0, 300) : "Story stream failed." });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {}
       }
     },
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      // no-transform keeps gzip (next start, proxies) from buffering the
+      // stream; X-Accel-Buffering does the same for nginx-style proxies.
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      Connection: "keep-alive",
+    },
   });
 }
