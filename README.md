@@ -1,6 +1,9 @@
 # Haunted Terminal
 
 Hacktoberfest Week 4, theme "Ghost in the Machine" (Oct 26-31, 2026).
+
+Play it: https://haunted-terminal.vercel.app
+
 A ghost named Marlowe lives in a terminal and tells a branching spooky
 story. The reader picks choices (or types an action), Gemma writes the next
 passage, and ElevenLabs narrates it.
@@ -55,4 +58,5 @@ gitignored.
 
 - Scaffolded 2026-10-26 evening after she picked the direction; `npm run build` passes.
 - Pushed to https://github.com/prophen/haunted-terminal on 2026-10-26.
-- Deployed on Vercel (production runs `GEMMA_MODE=router`). No custom domain.
+- Live at https://haunted-terminal.vercel.app (Vercel, production runs
+  `GEMMA_MODE=router`). Demo video: https://youtu.be/K-CVyUl0Pvk
