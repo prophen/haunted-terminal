@@ -1,6 +1,7 @@
 # Haunted Terminal
 
 Hacktoberfest Week 4, theme "Ghost in the Machine" (Oct 26-31, 2026).
+
 Play it: https://haunted-terminal.vercel.app
 
 A ghost named Marlowe lives in a terminal and tells a branching spooky
