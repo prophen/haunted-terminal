@@ -38,11 +38,9 @@ gitignored.
 
 ## Decisions still hers
 
-- Domain: no `.tech` domain (her call, 2026-10-26). Nothing is claimed
-  or deployed yet.
-- Deploy target: Vercel is the natural fit (same as Talk to the Book).
-- Voice: default voice id is Talk to the Book's fallback; pick a spookier
-  voice before submitting.
+- Domain: no `.tech` domain (her call, 2026-10-26).
+- Voice: the default narrator is Callum (`N2lVS1w4EtoT3dr4eOWO`), a husky
+  ElevenLabs premade voice. `ELEVENLABS_VOICE_ID` overrides it.
 - DEV post: the submission. Nothing submits under her name without her
   explicit approval.
 
@@ -56,4 +54,5 @@ gitignored.
 ## Status
 
 - Scaffolded 2026-10-26 evening after she picked the direction; `npm run build` passes.
-- Pushed to https://github.com/prophen/haunted-terminal on 2026-10-26. Not deployed, no domain claimed.
+- Pushed to https://github.com/prophen/haunted-terminal on 2026-10-26.
+- Deployed on Vercel (production runs `GEMMA_MODE=router`). No custom domain.
