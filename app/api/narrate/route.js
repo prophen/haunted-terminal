@@ -28,7 +28,9 @@ async function narrate(rawText, rawVoiceId) {
   }
 
   let text = String(rawText ?? "").trim();
-  const voiceId = String(rawVoiceId || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM");
+  // Default narrator: Callum, a husky, intense ElevenLabs premade voice that
+  // suits a ghost story. ELEVENLABS_VOICE_ID overrides it.
+  const voiceId = String(rawVoiceId || process.env.ELEVENLABS_VOICE_ID || "N2lVS1w4EtoT3dr4eOWO");
   if (!text) {
     return Response.json({ error: "Send { text, voiceId? } with the passage to narrate." }, { status: 400 });
   }
