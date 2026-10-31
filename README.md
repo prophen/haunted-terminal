@@ -18,6 +18,11 @@ passage, and ElevenLabs narrates it.
   them instead of after one long wait. Passages are 80 to 130 words to keep
   turns snappy.
 - Narration: ElevenLabs TTS, one passage at a time.
+- Play: a "passage N of 6" counter in the title bar, number keys 1 to 3
+  pick a choice, "Try again" resends a choice whose turn failed, Restart
+  works mid-story (with a confirm), "Copy story" copies the finished
+  transcript, and an Auto-narrate checkbox (remembered per browser) plays
+  each new passage after a choice.
 
 ## Run
 
