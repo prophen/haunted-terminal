@@ -56,6 +56,12 @@ export default function Home() {
   const narrateBusyRef = useRef(false);
   const narrateSeqRef = useRef(0);
   const bottomRef = useRef(null);
+  // Focus management: choosing removes the button that had focus, which
+  // used to drop keyboard and screen reader users back at the top of the
+  // page. After each turn, focus moves to the newest line instead, so a
+  // screen reader reads the new passage and Tab reaches the next choices.
+  const lastLineRef = useRef(null);
+  const focusNextRef = useRef(false);
 
   // Seconds since the ghost started typing, so a slow first word reads as
   // progress rather than a frozen terminal.
@@ -68,8 +74,15 @@ export default function Home() {
   }, [loading]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    bottomRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
   }, [lines, loading, streamingText]);
+
+  useEffect(() => {
+    if (loading || !focusNextRef.current) return;
+    focusNextRef.current = false;
+    lastLineRef.current?.focus({ preventScroll: true });
+  }, [loading]);
 
   // Streams one story turn: passages appear as Gemma writes them, and the
   // validated passage plus choices arrive in the final event.
@@ -146,6 +159,7 @@ export default function Home() {
 
   const choose = async (choice) => {
     if (loading) return;
+    focusNextRef.current = true;
     // Moving on stops any narration in progress, so it never bleeds into
     // the next passage.
     if (audioRef.current) {
@@ -263,6 +277,7 @@ export default function Home() {
     setChoices([]);
     setHistory([]);
     setDemoStep(0);
+    focusNextRef.current = true;
     startLive();
   };
 
@@ -270,6 +285,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto" }}>
+      <h1 className="sr-only">Haunted Terminal</h1>
       <div
         style={{
           background: "#0a0f0a",
@@ -290,9 +306,9 @@ export default function Home() {
             borderBottom: "1px solid #1e3a22",
           }}
         >
-          <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f57" }} />
-          <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#febc2e" }} />
-          <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#28c840" }} />
+          <span aria-hidden="true" style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f57" }} />
+          <span aria-hidden="true" style={{ width: 11, height: 11, borderRadius: "50%", background: "#febc2e" }} />
+          <span aria-hidden="true" style={{ width: 11, height: 11, borderRadius: "50%", background: "#28c840" }} />
           <span style={{ marginLeft: 8, color: "#7ddb8a", fontSize: 12 }}>ghost@machine: ~/seance</span>
         </div>
         <div style={{ position: "relative", padding: 16 }}>
@@ -305,17 +321,35 @@ export default function Home() {
             }}
           />
           <div style={{ position: "relative", color: "#33ff66", fontSize: 14, lineHeight: 1.65, textShadow: "0 0 6px rgba(51,255,102,.35)" }}>
-            <div style={{ color: "#1f8a3a" }}>$ seance --begin</div>
-            <div style={{ color: "#1f8a3a", margin: "10px 0" }}>
+            <div style={{ color: "#2e9e4a" }}>$ seance --begin</div>
+            <div style={{ color: "#2e9e4a", margin: "10px 0" }}>
               The terminal flickers. Something has been waiting in the machine...
             </div>
             {lines.map((line, i) => (
-              <div key={i} style={{ margin: "10px 0", color: line.kind === "error" ? "#ff7b72" : line.kind === "reader" ? "#7ddb8a" : "#33ff66" }}>
-                {line.text}
+              <div
+                key={i}
+                ref={i === lines.length - 1 ? lastLineRef : null}
+                tabIndex={i === lines.length - 1 ? -1 : undefined}
+                className="line"
+                style={{ margin: "10px 0", color: line.kind === "error" ? "#ff7b72" : line.kind === "reader" ? "#7ddb8a" : "#33ff66" }}
+              >
+                {line.kind === "reader" ? (
+                  <>
+                    <span aria-hidden="true">&gt; </span>
+                    <span className="sr-only">You chose: </span>
+                    {line.text.replace(/^> /, "")}
+                  </>
+                ) : (
+                  line.text
+                )}
               </div>
             ))}
-            {loading && streamingText && <div style={{ margin: "10px 0" }}>{streamingText}</div>}
-            {loading && !streamingText && <div style={{ margin: "10px 0" }}>The ghost is typing...{waitSecs >= 3 ? ` ${waitSecs}s` : ""}</div>}
+            {/* The half-written passage is hidden from screen readers so they
+                are not read a stream of fragments; the finished passage is
+                read once, when focus moves to it. */}
+            {loading && streamingText && <div aria-hidden="true" style={{ margin: "10px 0" }}>{streamingText}</div>}
+            {loading && !streamingText && <div aria-hidden="true" style={{ margin: "10px 0" }}>The ghost is typing...{waitSecs >= 3 ? ` ${waitSecs}s` : ""}</div>}
+            <div role="status" className="sr-only">{loading ? "The ghost is typing..." : ""}</div>
             {lastGhost && !loading && (
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
                 <button
@@ -333,15 +367,17 @@ export default function Home() {
                 >
                   {narrateLoading ? "Summoning voice..." : narrating ? "Pause narration" : "Listen"}
                 </button>
-                <span style={{ color: "#1f8a3a", fontSize: 12 }}>speed:</span>
+                <span aria-hidden="true" style={{ color: "#2e9e4a", fontSize: 12 }}>speed:</span>
+                <span role="group" aria-label="Narration speed" style={{ display: "contents" }}>
                 {[1, 1.25, 1.5, 2].map((r) => (
                   <button
                     key={r}
+                    aria-pressed={rate === r}
                     onClick={() => setPlaybackRate(r)}
                     style={{
                       background: rate === r ? "rgba(51,255,102,.12)" : "transparent",
-                      border: `1px solid ${rate === r ? "#33ff66" : "#1e3a22"}`,
-                      color: rate === r ? "#33ff66" : "#1f8a3a",
+                      border: `1px solid ${rate === r ? "#33ff66" : "#3a7a45"}`,
+                      color: rate === r ? "#33ff66" : "#2e9e4a",
                       font: "inherit",
                       fontSize: 12,
                       padding: "4px 8px",
@@ -352,10 +388,11 @@ export default function Home() {
                     {r}x
                   </button>
                 ))}
+                </span>
               </div>
             )}
             {choices.length > 0 && !loading && (
-              <div style={{ marginTop: 16 }}>
+              <div role="group" aria-label="What do you do?" style={{ marginTop: 16 }}>
                 {choices.map((choice, i) => (
                   <button
                     key={i}
@@ -373,7 +410,8 @@ export default function Home() {
                       cursor: "pointer",
                     }}
                   >
-                    &gt; {i + 1}. {choice}
+                    <span aria-hidden="true">&gt; </span>
+                    {i + 1}. {choice}
                   </button>
                 ))}
                 <form
@@ -386,21 +424,21 @@ export default function Home() {
                   }}
                   style={{ marginTop: 12, display: "flex", gap: 8 }}
                 >
-                  <span style={{ padding: "6px 0" }}>&gt;</span>
+                  <span aria-hidden="true" style={{ padding: "6px 0" }}>&gt;</span>
                   <input
                     value={custom}
                     onChange={(e) => setCustom(e.target.value)}
                     placeholder="Or type your own action..."
+                    aria-label="Type your own action"
                     style={{
                       flex: 1,
                       background: "transparent",
-                      border: "1px solid #1e3a22",
+                      border: "1px solid #3a7a45",
                       borderRadius: 6,
                       color: "#33ff66",
                       font: "inherit",
                       fontSize: 14,
                       padding: "6px 10px",
-                      outline: "none",
                     }}
                   />
                 </form>
@@ -424,15 +462,20 @@ export default function Home() {
                 Restart seance
               </button>
             )}
-            <div style={{ marginTop: 14 }}>
+            <div aria-hidden="true" style={{ marginTop: 14 }}>
               &gt; <span className="cursor" />
             </div>
           </div>
         </div>
       </div>
-      {notice && <p style={{ color: "#ffb86b", fontSize: 13, lineHeight: 1.5 }}>{notice}</p>}
+      <div role="status">{notice && <p style={{ color: "#ffb86b", fontSize: 13, lineHeight: 1.5 }}>{notice}</p>}</div>
       {demoMode && <p style={{ color: "#7ddb8a", fontSize: 13 }}>Demo story. Your next choice tries the live story again.</p>}
-      <style>{`.cursor{display:inline-block;width:9px;height:17px;background:#33ff66;vertical-align:-2px;animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}`}</style>
+      <style>{`.cursor{display:inline-block;width:9px;height:17px;background:#33ff66;vertical-align:-2px;animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+button:focus-visible,input:focus-visible{outline:2px solid #33ff66;outline-offset:2px}
+.line:focus{outline:none}
+input::placeholder{color:#2e9e4a;opacity:1}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion: reduce){.cursor{animation:none}}`}</style>
     </main>
   );
 }
